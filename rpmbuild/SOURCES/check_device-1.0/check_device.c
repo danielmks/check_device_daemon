@@ -1,8 +1,8 @@
 /*
  * 파일명: check_device.c
- * 설명: 데몬화하여 매 INTERVAL_MINUTES 분마다 (날짜, 시간, CPU 사용량, 메모리 사용량, 디스크 사용량)을
+ * 설명: 데몬화하여 매 INTERVAL_MINUTES 분마다 (날짜, 시간, CPU 사용량, 메모리 사용량, 디스크 사용량, CPU 온도)을
  *       /var/log/check_device 디렉토리에 기록하는 서비스 프로그램.
- *       텍스트 로그 파일명은 "check_device_log_YYYYMMDD.log",
+ *       텍스트 로그 파일명은 "check_device_log_YYYYMMDD.log"(더이상 저장 X),
  *       CSV 파일명은 "check_device_log_YYYYMMDD.csv" 형식이며,
  *       지정한 보관 기간(예: 7일) 이후 자동으로 삭제됩니다.
  */
@@ -110,6 +110,19 @@ float get_disk_usage() {
     return (float)used / total * 100;
 }
 
+// CPU 온도를 읽어 °C 단위로 반환하는 함수
+float get_cpu_temperature(){
+    FILE *fp =fopen("/sys/class/thermal/thermal_zone0/temp", "r");
+    if (!fp) return -1;
+    int temp_milli;
+    fscanf(fp,"%d",&temp_milli);
+    fclose(fp);
+    return temp_milli / 1000.0;
+}
+
+
+
+
 // 데몬화 함수: 프로세스를 백그라운드 데몬으로 전환
 void daemonize() {
     pid_t pid, sid;
@@ -154,8 +167,8 @@ void write_log() {
     char csv_filename[256];
     
     // 파일명 생성: "check_device_log_YYYYMMDD.log"와 ".csv"
-    snprintf(log_filename, sizeof(log_filename), "%s_log_%04d%02d%02d.log",
-             PROCESS_NAME, tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
+    // snprintf(log_filename, sizeof(log_filename), "%s_log_%04d%02d%02d.log",
+    //          PROCESS_NAME, tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
     snprintf(csv_filename, sizeof(csv_filename), "%s_log_%04d%02d%02d.csv",
              PROCESS_NAME, tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
 
@@ -163,31 +176,32 @@ void write_log() {
     float cpu_usage = get_cpu_usage();
     float mem_usage = get_memory_usage();
     float disk_usage = get_disk_usage();
+    float cpu_temp = get_cpu_temperature();
 
     // 날짜와 시간 문자열 생성
     char dateStr[16];
     char timeStr[16];
     strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", tm_info);
     strftime(timeStr, sizeof(timeStr), "%H:%M:%S", tm_info);
-
+   
     // 텍스트 로그 파일에 기록
-    FILE *fp = fopen(log_filename, "a");
-    if (fp != NULL) {
-        fprintf(fp, "%s, %s, CPU: %.1f%%, Memory: %.1f%%, Disk: %.1f%%\n", dateStr, timeStr, cpu_usage, mem_usage, disk_usage);
-        fclose(fp);
-    }
+    // FILE *fp = fopen(log_filename, "a");
+    // if (fp != NULL) {
+    //     fprintf(fp, "%s, %s, CPU: %.1f%%, Memory: %.1f%%, Disk: %.1f%%\n", dateStr, timeStr, cpu_usage, mem_usage, disk_usage);
+    //     fclose(fp);
+    // }
 
     // CSV 파일에 기록 (헤더가 없으면 추가)
     int write_header = 0;
     if (access(csv_filename, F_OK) != 0) {
         write_header = 1;
     }
-    fp = fopen(csv_filename, "a");
+    FILE *fp = fopen(csv_filename, "a");
     if (fp != NULL) {
         if (write_header) {
-            fprintf(fp, "Date,Time,CPU Usage,Memory Usage,Disk Usage\n");
+            fprintf(fp, "Date,Time,CPU Usage,Memory Usage,Disk Usage,CPU Temp\n");
         }
-        fprintf(fp, "%s,%s,%.1f,%.1f,%.1f\n", dateStr, timeStr, cpu_usage, mem_usage, disk_usage);
+        fprintf(fp, "%s,%s,%.1f,%.1f,%.1f,%.1f\n", dateStr, timeStr, cpu_usage, mem_usage, disk_usage,cpu_temp);
         fclose(fp);
     }
 }
@@ -236,3 +250,4 @@ int main() {
 
     return 0;
 }
+
