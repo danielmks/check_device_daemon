@@ -1,5 +1,5 @@
 Name:           check_device
-Version:        1.0
+Version:        1.4
 Release:        1%{?dist}
 Summary:        Device monitoring daemon that logs date, time, CPU and memory usage every INTERVAL_MINUTES minutes
 
