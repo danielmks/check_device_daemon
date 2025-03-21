@@ -1,6 +1,6 @@
 Name:           check_device
 Version:        1.4
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Device monitoring daemon that logs date, time, CPU and memory usage every INTERVAL_MINUTES minutes
 
 License:        GPL
@@ -8,7 +8,8 @@ Group:          System Environment/Base
 URL:            http://example.com
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  gcc, make
+BuildRequires:  gcc, make, net-snmp-devel
+Requires:  net-snmp
 
 %global debug_package %{nil}
 
