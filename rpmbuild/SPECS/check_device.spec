@@ -1,5 +1,5 @@
 Name:           check_device
-Version:        1.4
+Version:        1.5
 Release:        2%{?dist}
 Summary:        Device monitoring daemon that logs date, time, CPU and memory usage every INTERVAL_MINUTES minutes
 
@@ -33,6 +33,10 @@ install -m 0755 check_device %{buildroot}/usr/local/bin/check_device
 mkdir -p %{buildroot}/etc/systemd/system
 install -m 0644 check_device.service %{buildroot}/etc/systemd/system/check_device.service
 
+# Install configure file 
+mkdir -p %{buildroot}/etc/check_device
+install -m 0644 check_device.conf %{buildroot}/etc/check_device/check_device.conf
+
 # Create log directory with proper permissions
 mkdir -p %{buildroot}/var/log/check_device
 chmod 0755 %{buildroot}/var/log/check_device
@@ -53,6 +57,8 @@ chmod 0755 /var/log/check_device
 /etc/systemd/system/check_device.service
 # Log directory
 %dir %attr(0755,nobody,nobody) /var/log/check_device
+# Configure file
+%config(noreplace) /etc/check_device/check_device.conf
 
 %changelog
 * Thu Mar 13 2025 keixin001 <keixin001@gmail.com> - 1.0-1
