@@ -12,5 +12,5 @@ sudo dnf install ./rpmbuild/RPMS/x86_64/check_device-1.0-1.el8.x86_64.rpm
 
 - rpm 패키지 삭제하기
 ```
-sudo rpm -evh check_device
+sudo dnf remove check_device
 ```
