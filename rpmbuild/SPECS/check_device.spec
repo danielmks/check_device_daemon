@@ -1,5 +1,5 @@
 Name:           check_device
-Version:        2.2
+Version:        2.3
 Release:        1%{?dist}
 Summary:        Device monitoring daemon that logs date, time, CPU and memory usage every INTERVAL_MINUTES minutes
 
@@ -41,6 +41,10 @@ install -m 0644 check_device.conf %{buildroot}/etc/check_device/check_device.con
 mkdir -p %{buildroot}/var/log/check_device
 chmod 0755 %{buildroot}/var/log/check_device
 
+# Install rsyslog configuration file to /etc/rsyslog.d
+mkdir -p %{buildroot}/etc/rsyslog.d
+install -m 0644 check_device_rsyslog.conf %{buildroot}/etc/rsyslog.d/check_device_rsyslog.conf
+
 %post
 # Ensure log directory exists on the target system with correct permissions
 if [ ! -d /var/log/check_device ]; then
@@ -59,6 +63,8 @@ chmod 0755 /var/log/check_device
 %dir %attr(0755,nobody,nobody) /var/log/check_device
 # Configure file
 %config(noreplace) /etc/check_device/check_device.conf
+# Rsyslog configuration file
+%config(noreplace) /etc/rsyslog.d/check_device_rsyslog.conf
 
 %changelog
 * Thu Mar 13 2025 keixin001 <keixin001@gmail.com> - 1.0-1
