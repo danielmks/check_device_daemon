@@ -1,6 +1,6 @@
 Name:           check_device
-Version:        2.4
-Release:        1%{?dist}
+Version:        2.5
+Release:        2%{?dist}
 Summary:        Device monitoring daemon that logs date, time, CPU and memory usage every INTERVAL_MINUTES minutes
 
 License:        GPL
@@ -18,7 +18,7 @@ check_device is a daemon that logs the current date, time, CPU usage, and memory
 Logs are stored in /var/log/check_device as "check_device_log_YYYYMMDD.log", and files older than 7 days are removed.
 
 %prep
-%setup -q
+%setup -q -n check_device
 
 %build
 make
