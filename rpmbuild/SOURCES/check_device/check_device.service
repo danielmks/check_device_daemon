@@ -1,13 +1,13 @@
 [Unit]
-Description=Device monitoring daemon that logs date, time, CPU and memory usage every INTERVAL_MINUTES minutes
+Description=Device monitoring daemon that logs date, time, CPU and memory usage every periods
 After=network.target
 
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/check_device
 Restart=always
-User=nobody
-Group=nobody
+User=root
+Group=root
 
 [Install]
 WantedBy=multi-user.target

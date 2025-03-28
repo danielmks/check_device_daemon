@@ -10,6 +10,8 @@
 #include <dirent.h>
 #include <ctype.h>
 
+#include "fanmonitor.h"
+
 #define PROCESS_NAME "check_device"
 #define LOG_DIR "/var/log/check_device"
 
@@ -65,22 +67,42 @@ void write_csv_log(void) {
         fclose(fp_basic);
     }
 
-    /* 하드웨어 종속 지표 CSV 파일: hwinfo_YYYYMMDD.csv */
+    /* 하드웨어 CSV 파일: RAID 및 팬 정보 기록 */
     char hwinfo_csv[512];
-    snprintf(hwinfo_csv, sizeof(hwinfo_csv), "%s/hwinfo_%04d%02d%02d.csv", 
-             daily_dir, tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
-    int hwinfo_header = (access(hwinfo_csv, F_OK) != 0);
+    snprintf(hwinfo_csv, sizeof(hwinfo_csv), "%s/hwinfo_%04d%02d%02d.csv",
+             daily_dir, tm_info->tm_year+1900, tm_info->tm_mon+1, tm_info->tm_mday);
+    int hwinfo_header = (access(hwinfo_csv, F_OK) == 0) ? 0 : 1;
     FILE *fp_hwinfo = fopen(hwinfo_csv, "a");
     if (fp_hwinfo != NULL) {
         if (hwinfo_header) {
-            fprintf(fp_hwinfo, "Timestamp,Power Status,Fan Status,RAID Status\n");
+            /* 헤더 순서:
+               Timestamp, RAID State, RAID Level, Slot 0 Status, Slot 1 Status,
+               Power1, Power2,
+               CPU Fan (RPM), Aux Fan (RPM), FAN1 (RPM), FAN2 (RPM), FAN3 (RPM)
+            */
+            fprintf(fp_hwinfo, "Timestamp,RAID State,RAID Level,Slot 0 Status,Slot 1 Status,Power1,Power2,CPU Fan (RPM),Aux Fan (RPM),FAN1 (RPM),FAN2 (RPM),FAN3 (RPM)\n");
         }
-        const char *power_status = get_power_module_status();
-        const char *fan_status = get_fan_status();
-        const char *raid_status = get_raid_status();
-        fprintf(fp_hwinfo, "%s,%s,%s,%s\n", timestamp, power_status, fan_status, raid_status);
+        RaidInfo raidInfo = get_raid_info();
+        FanInfo fanInfo = get_fan_info();
+
+        PowerInfo powerInfo = get_power_info();
+
+        fprintf(fp_hwinfo, "%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d\n",
+            timestamp,
+            raidInfo.raid_state,
+            raidInfo.raid_level,
+            raidInfo.ssd0_status,
+            raidInfo.ssd1_status,
+            powerInfo.power1,
+            powerInfo.power2,
+            fanInfo.cpuFan,
+            fanInfo.auxFan,
+            fanInfo.fan1,
+            fanInfo.fan2,
+            fanInfo.fan3);
         fclose(fp_hwinfo);
     }
+
 }
 
 /* CSV 로그 보관 기간 초과된 디렉토리를 삭제하는 함수 */

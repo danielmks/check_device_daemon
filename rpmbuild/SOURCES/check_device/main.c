@@ -5,8 +5,6 @@
 #include <syslog.h>
 #include <unistd.h>
 
-//#define INTERVAL_MINUTES 5
-
 int main(void) {
     //daemonize();
 

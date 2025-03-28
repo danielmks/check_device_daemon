@@ -4,17 +4,19 @@
 #include <syslog.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+#include "fanmonitor.h"
 
 /* SNMP 관련 헤더 */
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 
-// #define CONFIG_FILE "/etc/check_device/check_device.conf"
-
-/* 임계치 (필요에 따라 수정) */
-#define POWER_STATUS_OK      "OK"
-#define FAN_STATUS_OK        "Normal"
-#define RAID_STATUS_OK       "OK"
+#define RAID_OID ".1.3.6.1.4.1.8072.2.3.0.9"
+#define SSD0_OID ".1.3.6.1.4.1.8072.2.3.0.10"
+#define SSD1_OID ".1.3.6.1.4.1.8072.2.3.0.11"
+#define FAN_OID  ".1.3.6.1.4.1.8072.2.3.0.8"
+#define POWER_OID ".1.3.6.1.4.1.8072.2.3.0.7"
 
 /* SNMP 트랩 전송 함수 (SNMPv2c, 커뮤니티 "public") */
 void send_snmp_trap(const char *trap_oid, const char *message) {
@@ -34,8 +36,8 @@ void send_snmp_trap(const char *trap_oid, const char *message) {
     /* 매크로로 정의된 대상 주소 사용 */
     session.peername = strdup(dest);
     session.version = SNMP_VERSION_2c;
-    session.community = (u_char *)"public";
-    session.community_len = strlen("public");
+    session.community = (u_char *)global_config.snmp_trap_community;
+    session.community_len = strlen(global_config.snmp_trap_community);
 
     ss = snmp_open(&session);
     if (!ss) {
@@ -67,9 +69,6 @@ void check_and_alarm(void) {
     float cpu_temp = get_cpu_temperature();
     float rx_rate = 0, tx_rate = 0;
     get_network_traffic(&rx_rate, &tx_rate);
-    const char* power_status = get_power_module_status();
-    const char* fan_status = get_fan_status();
-    const char* raid_status = get_raid_status();
 
     if (cpu_usage > global_config.cpu_usage_threshold) {
         if (global_config.syslog_enable)
@@ -101,27 +100,46 @@ void check_and_alarm(void) {
             syslog(LOG_ALERT, "ALARM: Network TX high: %.1f bytes/sec", tx_rate);
         send_snmp_trap(".1.3.6.1.4.1.8072.2.3.0.6", "Network TX high alarm triggered");
     }
-    if (strcmp(power_status, POWER_STATUS_OK) != 0) {
-        if (global_config.syslog_enable)
-            syslog(LOG_ALERT, "ALARM: Power module status: %s", power_status);
-        send_snmp_trap(".1.3.6.1.4.1.8072.2.3.0.7", "Power module alarm triggered");
-    }
-    if (strcmp(fan_status, FAN_STATUS_OK) != 0) {
-        if (global_config.syslog_enable)
-            syslog(LOG_ALERT, "ALARM: Fan status: %s", fan_status);
-        send_snmp_trap(".1.3.6.1.4.1.8072.2.3.0.8", "Fan status alarm triggered");
-    }
-    if (strcmp(raid_status, RAID_STATUS_OK) != 0) {
-        if (global_config.syslog_enable)
-            syslog(LOG_ALERT, "ALARM: RAID status: %s", raid_status);
-        send_snmp_trap(".1.3.6.1.4.1.8072.2.3.0.9", "RAID status alarm triggered");
-    }
-}
 
-// /* 초기화 시 설정 파일을 읽어 전역 변수에 저장 */
-// void init_config(void) {
-//     if (check_config(CONFIG_FILE, &global_config) != 0) {
-//         syslog(LOG_ERR, "Failed to read configuration file: %s", CONFIG_FILE);
-//         /* 실패시 기본값을 설정하거나 종료 처리할 수 있음 */
-//     }
-// }
+    RaidInfo raidInfo = get_raid_info();
+    /* RAID 상태 알람: RAID 상태가 "Optimal"이 아니면 알람 */
+    if(strcasecmp(raidInfo.raid_state, "Optimal") != 0) {
+        if(global_config.syslog_enable)
+            syslog(LOG_ALERT, "ALARM: RAID state abnormal: %s, Level: %s", raidInfo.raid_state, raidInfo.raid_level);
+        send_snmp_trap(RAID_OID, "RAID state alarm triggered");
+    }
+
+    /* SSD 슬롯 상태 알람 */
+    if (strcasecmp(raidInfo.ssd0_status, "Online") != 0) {
+        if (global_config.syslog_enable)
+            syslog(LOG_ALERT, "ALARM: SSD0 status abnormal: %s", raidInfo.ssd0_status);
+        send_snmp_trap(SSD0_OID, "SSD0 status alarm triggered");
+    }
+    if (strcasecmp(raidInfo.ssd1_status, "Online") != 0) {
+        if (global_config.syslog_enable)
+            syslog(LOG_ALERT, "ALARM: SSD1 status abnormal: %s", raidInfo.ssd1_status);
+        send_snmp_trap(SSD1_OID, "SSD1 status alarm triggered");
+    }
+
+
+    /* 팬 상태 알람 */
+    FanInfo fanInfo = get_fan_info();
+    if (fanInfo.cpuFan <= 0 || fanInfo.auxFan <= 0 || 
+        fanInfo.fan1 <= 0 || fanInfo.fan2 <= 0 || fanInfo.fan3 <= 0) {
+        if (global_config.syslog_enable)
+            syslog(LOG_ALERT, "ALARM: Fan speed abnormal: CPU Fan=%d, Aux Fan=%d, FAN1=%d, FAN2=%d, FAN3=%d",
+                   fanInfo.cpuFan, fanInfo.auxFan, fanInfo.fan1, fanInfo.fan2, fanInfo.fan3);
+        send_snmp_trap(FAN_OID, "Fan speed alarm triggered");
+    }
+
+    /* 전원(Power) 상태 알람 */
+    PowerInfo powerInfo = get_power_info();
+    /* 두 채널 모두 "OK"여야 정상. 하나라도 "OK"가 아니면 알람 발생 */
+    if (strcasecmp(powerInfo.power1, "OK") != 0 || strcasecmp(powerInfo.power2, "OK") != 0) {
+        if (global_config.syslog_enable)
+            syslog(LOG_ALERT, "ALARM: Power state abnormal: Power1=%s, Power2=%s", 
+                   powerInfo.power1, powerInfo.power2);
+        send_snmp_trap(POWER_OID, "Power state alarm triggered");
+    }
+
+}

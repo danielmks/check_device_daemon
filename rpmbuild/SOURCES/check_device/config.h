@@ -15,10 +15,7 @@ typedef struct {
     int syslog_enable;
     char net_interface[64];
     int csv_retention_days;
-    /* 하드웨어 지표 관련 파일 경로 */
-    char power_status_path[256];
-    char fan_status_path[256];
-    char raid_status_path[256];
+    char snmp_trap_community[64];
 } config_t;
 
 extern config_t global_config;

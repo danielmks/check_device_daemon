@@ -1,16 +1,17 @@
-# check_device_daemon
+# check_device
 
-- rpm 패키지 만들기
+## 설치 방법 (RPM 파일 설치)
 ```
-rpmbuild -ba ./rpmbuild/SPECS/check_device.spec
-```
-
-- rpm 패키지 설치하기
-```
-sudo dnf install ./rpmbuild/RPMS/x86_64/check_device-1.0-1.el8.x86_64.rpm
+sudo dnf install ./check_device-<버전>.rpm
 ```
 
-- rpm 패키지 삭제하기
+## 삭제 방법
 ```
 sudo dnf remove check_device
+```
+
+## systemd 서비스 등록 시
+```
+sudo systemctl start check_device.service
+sudo systemctl enable check_device.service
 ```

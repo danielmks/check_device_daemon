@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <sys/statvfs.h>
 #include <string.h>
+#include <syslog.h>
+#include <ctype.h>
 
 // CPU 시간을 읽어들이기 위한 구조체 및 내부 함수
 typedef struct {
@@ -129,46 +131,111 @@ int get_network_traffic(float *rx_rate, float *tx_rate) {
     return 0;
 }
 
-const char* get_power_module_status(void) {
-    static char status_buf[64];
-    FILE *fp = fopen("/sys/class/power_supply/AC/online", "r");
-    if (!fp)
-        return "Unknown";
-    int status = 0;
-    fscanf(fp, "%d", &status);
-    fclose(fp);
-    snprintf(status_buf, sizeof(status_buf), "%s", (status == 1) ? "OK" : "Not OK");
-    return status_buf;
-}
+RaidInfo get_raid_info(void) {
+    RaidInfo info;
+    memset(&info, 0, sizeof(info));
+    FILE *fp;
+    char line[256];
 
-const char* get_fan_status(void) {
-    static char status_buf[64];
-    FILE *fp = fopen("/sys/class/hwmon/hwmon0/fan1_input", "r");
-    if (!fp)
-        return "Unknown";
-    if (fgets(status_buf, sizeof(status_buf), fp) == NULL) {
-        fclose(fp);
-        return "Unknown";
-    }
-    fclose(fp);
-    status_buf[strcspn(status_buf, "\n")] = '\0';
-    return status_buf;
-}
-
-const char* get_raid_status(void) {
-    static char status_buf[64];
-    FILE *fp = fopen("/proc/mdstat", "r");
-    if (!fp)
-        return "Unknown";
-    char line[512];
-    int found = 0;
-    while (fgets(line, sizeof(line), fp)) {
-        if (strstr(line, "md")) {
-            found = 1;
-            break;
+    /* 1. RAID 상태 및 레벨 확인 명령어 */
+    const char *raid_cmd =
+        "/opt/MegaRAID/MegaCli/MegaCli64 -ShowSummary -aALL | grep -A 7 \"Storage\" | "
+        "awk \"{ if(\\$0 ~ /State/) { stat=\\$NF } else if(\\$0 ~ /RAID Level/) { raid=\\$NF } } "
+        "END { print stat, raid }\"";
+    
+    //Optimal 1 로출력됨(쉼표 안나옴)
+    fp = popen(raid_cmd, "r");
+    if (fp != NULL) {
+        //syslog(LOG_DEBUG, "DEBUG: Executing command: %s", raid_cmd);
+        if (fgets(line, sizeof(line), fp) != NULL) {
+            //syslog(LOG_DEBUG, "DEBUG: popen output: %s", line);
+            // 공백을 기준으로 토큰 분리
+            char *token = strtok(line, " \t\n");
+            if (token != NULL) {
+                strncpy(info.raid_state, token, sizeof(info.raid_state) - 1);
+                token = strtok(NULL, " \t\n");
+                if (token != NULL) {
+                    strncpy(info.raid_level, token, sizeof(info.raid_level) - 1);
+                } else {
+                    strncpy(info.raid_level, "Unknown", sizeof(info.raid_level) - 1);
+                }
+            }
         }
+        pclose(fp);
+    } else {
+        syslog(LOG_ERR, "DEBUG: RAID popen() failed: %s", raid_cmd);
+        strncpy(info.raid_state, "Unknown", sizeof(info.raid_state)-1);
+        strncpy(info.raid_level, "Unknown", sizeof(info.raid_level)-1);
     }
-    fclose(fp);
-    snprintf(status_buf, sizeof(status_buf), "%s", found ? "OK" : "No RAID");
-    return status_buf;
+    
+    /* 2. 슬롯(SSD) 상태 확인 명령어 */
+    const char *pd_cmd =
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aALL | grep -E \"Slot Number:|Firmware state:\" | "
+        "awk '{ if($0 ~ /Slot Number:/) { slot=$3 } else if($0 ~ /Firmware state:/) { print \"Slot \" slot \": \" $3, substr($0, index($0,$4)) } }'";
+    
+    fp = popen(pd_cmd, "r");
+    if (fp != NULL) {
+        //syslog(LOG_DEBUG, "DEBUG: Executing PD command: %s", pd_cmd);
+        int count = 0;
+        while (fgets(line, sizeof(line), fp) != NULL && count < 2) {
+            //syslog(LOG_DEBUG, "DEBUG: PD popen output: %s", line);
+            line[strcspn(line, "\n")] = '\0';  // 개행 제거
+            /* 만약 "Online" 문자열이 있으면 "Online", 아니면 "Not Online" */
+            if (strstr(line, "Online") != NULL) {
+                if (count == 0)
+                    strncpy(info.ssd0_status, "Online", sizeof(info.ssd0_status)-1);
+                else if (count == 1)
+                    strncpy(info.ssd1_status, "Online", sizeof(info.ssd1_status)-1);
+            } else {
+                if (count == 0)
+                    strncpy(info.ssd0_status, "Not Online", sizeof(info.ssd0_status)-1);
+                else if (count == 1)
+                    strncpy(info.ssd1_status, "Not Online", sizeof(info.ssd1_status)-1);
+            }
+            count++;
+        }
+        pclose(fp);
+    } else {
+        syslog(LOG_ERR, "DEBUG: PD popen() failed: %s", pd_cmd);
+        strncpy(info.ssd0_status, "Unknown", sizeof(info.ssd0_status)-1);
+        strncpy(info.ssd1_status, "Unknown", sizeof(info.ssd1_status)-1);
+    }
+    
+    return info;
+}
+
+/* 외부 라이브러리의 함수 선언 */
+extern int Redundant_Power(int *status);
+
+/* 전원 정보를 개별로 확인하는 함수 */
+PowerInfo get_power_info(void) {
+    PowerInfo pinfo;
+    memset(&pinfo, 0, sizeof(pinfo));
+    int re = -1;
+    
+    if (Redundant_Power(&re) != 0) {
+        strncpy(pinfo.power1, "Unknown", sizeof(pinfo.power1)-1);
+        strncpy(pinfo.power2, "Unknown", sizeof(pinfo.power2)-1);
+        return pinfo;
+    }
+    /* 예를 들어, 아래와 같이 처리:
+       - re == 0: "OK", "OK"
+       - re == 1: "Fail", "OK"
+       - re == 2: "OK", "Fail"
+       (필요에 따라 다른 값도 처리)
+    */
+    if (re == 0) {
+        strncpy(pinfo.power1, "OK", sizeof(pinfo.power1)-1);
+        strncpy(pinfo.power2, "OK", sizeof(pinfo.power2)-1);
+    } else if (re == 1) {
+        strncpy(pinfo.power1, "Fail", sizeof(pinfo.power1)-1);
+        strncpy(pinfo.power2, "OK", sizeof(pinfo.power2)-1);
+    } else if (re == 2) {
+        strncpy(pinfo.power1, "OK", sizeof(pinfo.power1)-1);
+        strncpy(pinfo.power2, "Fail", sizeof(pinfo.power2)-1);
+    } else {
+        strncpy(pinfo.power1, "Unknown", sizeof(pinfo.power1)-1);
+        strncpy(pinfo.power2, "Unknown", sizeof(pinfo.power2)-1);
+    }
+    return pinfo;
 }

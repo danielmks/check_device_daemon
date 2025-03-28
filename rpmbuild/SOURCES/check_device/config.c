@@ -26,9 +26,7 @@ static void set_default_config(config_t *config) {
     config->syslog_enable       = 1;
     strncpy(config->net_interface, "eth0", sizeof(config->net_interface) - 1);
     config->csv_retention_days  = 7;
-    strncpy(config->power_status_path, "/sys/class/power_supply/AC/online", sizeof(config->power_status_path) - 1);
-    strncpy(config->fan_status_path, "/sys/class/hwmon/hwmon0/fan1_input", sizeof(config->fan_status_path) - 1);
-    strncpy(config->raid_status_path, "/proc/mdstat", sizeof(config->raid_status_path) - 1);
+    strncpy(config->snmp_trap_community, "public", sizeof(config->snmp_trap_community) - 1);
 }
 
 //문자열 양쪽의 공백(whitespace)을 제거
@@ -88,12 +86,8 @@ int check_config(const char *conf_path, config_t *config) {
             strncpy(config->net_interface, value, sizeof(config->net_interface)-1);
         else if (strcmp(key, "CSV_RETENTION_DAYS") == 0)
             config->csv_retention_days = atoi(value);
-        else if (strcmp(key, "POWER_STATUS_PATH") == 0)
-            strncpy(config->power_status_path, value, sizeof(config->power_status_path)-1);
-        else if (strcmp(key, "FAN_STATUS_PATH") == 0)
-            strncpy(config->fan_status_path, value, sizeof(config->fan_status_path)-1);
-        else if (strcmp(key, "RAID_STATUS_PATH") == 0)
-            strncpy(config->raid_status_path, value, sizeof(config->raid_status_path)-1);
+        else if (strcmp(key, "SNMP_TRAP_COMMUNITY") == 0)
+            strncpy(config->snmp_trap_community, value, sizeof(config->snmp_trap_community)-1);
     }
     fclose(fp);
     return 0;

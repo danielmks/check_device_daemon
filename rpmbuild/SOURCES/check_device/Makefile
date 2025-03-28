@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -O2
-LDFLAGS = -lnetsnmp
+LDFLAGS = -lnetsnmp -laxio -L/usr/lib64 -Wl,-rpath,'$$ORIGIN/../lib64'
 
-SRCS = main.c daemon.c metrics.c alarms.c logging.c config.c
+SRCS = main.c daemon.c metrics.c alarms.c logging.c config.c fanmonitor.c
 OBJS = $(SRCS:.c=.o)
 TARGET = check_device
 
